@@ -48,25 +48,25 @@ safe-semantic-planner/
 Algorithm
 
   The planner uses D* Lite and considers:
-  
+```text  
   Transition cost
   Safety
   Reliability
   Distance from bad states
-
+```
 Test Cases
-
+```text
   Basic Reachability
   Bad State Avoidance
   Safety Margin
   Dynamic Transition
   Dynamic Goal
   Dynamic Transition Addition
-
+```
 Build
-
+```text
   g++ -std=c++17 -Iinclude src/*.cpp -o planner.
-
+```
 Run
 
   Windows:
@@ -80,10 +80,11 @@ Run Tests
 
 Results
   Experimental measurements are saved to:
-  
+```  
   results/experimental_results.csv
-
+```
 Documentation
-
+```text
   report/Design_Report.md – Technical design and algorithm
   report/User_Manual.md – Installation, execution and usage instructions
+```
