@@ -28,7 +28,6 @@ The planner receives an initial state, a goal state, a set of bad states, a set 
 
 Each state is represented by a unique ID and a Cartesian embedding vector.
 
-```cpp
 uint64_t id;
 std::vector<double> embedding;
 The embedding is used for Euclidean distance calculations and the heuristic function.
@@ -37,13 +36,13 @@ The embedding is used for Euclidean distance calculations and the heuristic func
 
 Each transition contains:
 
-Transition ID
-Source state
-Destination state
-Cost
-Safety
-Reliability
-Availability
+-Transition ID
+-Source state
+-Destination state
+-Cost
+-Safety
+-Reliability
+-Availability
 
 Only available and safe transitions are considered during planning.
 
@@ -51,23 +50,24 @@ Only available and safe transitions are considered during planning.
 
 The implementation uses:
 
-vector for states and transitions.
-unordered_map for g and rhs values.
-Adjacency lists for incoming and outgoing transitions.
-Priority queue for the D* Lite OPEN list.
-unordered_set for visited-state tracking.
+-vector for states and transitions.
+-unordered_map for g and rhs values.
+-Adjacency lists for incoming and outgoing transitions.
+-Priority queue for the D* Lite OPEN list.
+-unordered_set for visited-state tracking.
+
 7. D* Lite Algorithm
 
 D* Lite is used for path planning and replanning.
 
-For each state, the algorithm maintains:
-
-g(s)
-rhs(s)
+    For each state, the algorithm maintains:
+    
+    g(s)
+    rhs(s)
 
 The goal is initialized using:
 
-rhs(goal) = 0
+    rhs(goal) = 0
 
 Other states initially have infinite values.
 
@@ -75,7 +75,7 @@ The algorithm processes states using a priority queue until the start state beco
 
 For a state u:
 
-rhs(u) = min(cost(u,v) + g(v))
+    rhs(u) = min(cost(u,v) + g(v))
 
 where v represents a valid successor state.
 
@@ -85,7 +85,7 @@ The planner uses Euclidean distance between Cartesian state embeddings.
 
 For d-dimensional states:
 
-h(A,B) = sqrt(Σ(Ai - Bi)²)
+    h(A,B) = sqrt(Σ(Ai - Bi)²)
 
 The heuristic estimates the remaining distance between the current state and the goal.
 
@@ -97,7 +97,7 @@ A state that belongs to the bad-state set cannot be included in a valid solution
 
 For every visited state, the planner calculates its Euclidean distance to the nearest bad state:
 
-D(s) = min distance(s, bad state)
+    D(s) = min distance(s, bad state)
 
 The minimum distance along the selected path is reported as the minimum safety distance.
 
@@ -105,10 +105,10 @@ The minimum distance along the selected path is reported as the minimum safety d
 
 The effective transition cost considers:
 
-Transition cost
-Safety
-Reliability
-Distance from bad states
+-Transition cost
+-Safety
+-Reliability
+-Distance from bad states
 
 The general form is:
 
@@ -124,35 +124,35 @@ Lower safety and reliability increase the effective cost. States closer to bad s
 
 The planner supports dynamic changes including:
 
-Goal update
-planner.updateGoal(newGoal);
-Transition availability update
-planner.updateTransition(
-    transitionId,
-    false
-);
-Bad-state update
-planner.updateBadStates(
-    newBadStates
-);
-Transition addition
-planner.addTransition(
-    transition
-);
-Transition removal
-planner.removeTransition(
-    transitionId
-);
+    Goal update
+    planner.updateGoal(newGoal);
+    Transition availability update
+    planner.updateTransition(
+        transitionId,
+        false
+    );
+    Bad-state update
+    planner.updateBadStates(
+        newBadStates
+    );
+    Transition addition
+    planner.addTransition(
+        transition
+    );
+    Transition removal
+    planner.removeTransition(
+        transitionId
+    );
 
 After a change, replan() calculates a new path.
 
 12. Test Cases
-Test Case 1 – Basic Reachability
+-Test Case 1 – Basic Reachability
 S -> A -> B -> G
 
 The planner should successfully reach the goal.
 
-Test Case 2 – Bad State Avoidance
+-Test Case 2 – Bad State Avoidance
 S -> A -> X -> G
 
 where X is a bad state.
@@ -163,21 +163,21 @@ S -> C -> D -> G
 
 The planner must avoid X.
 
-Test Case 3 – Safety Margin
+-Test Case 3 – Safety Margin
 
 Two valid paths are provided. One path has lower cost but passes close to a bad state. The other has higher cost but maintains a larger safety margin.
 
 The planner considers the safety-distance penalty when selecting the path.
 
-Test Case 4 – Dynamic Transition
+-Test Case 4 – Dynamic Transition
 
 A transition used by the initial solution becomes unavailable. The planner must find an alternative path.
 
-Test Case 5 – Dynamic Goal
+-Test Case 5 – Dynamic Goal
 
 The goal state is changed during execution. The planner calculates a new path to the updated goal.
 
-Test Case 6 – Dynamic Transition Addition
+-Test Case 6 – Dynamic Transition Addition
 
 A new shortcut transition is added. The planner replans and evaluates the new route.
 
@@ -185,19 +185,19 @@ A new shortcut transition is added. The planner replans and evaluates the new ro
 
 The following metrics are recorded:
 
-Success
-Bad states visited
-Total path cost
-Minimum safety distance
-Safety score
-Explored states
-Planning time
-Replanning time
-Approximate memory usage
+-Success
+-Bad states visited
+-Total path cost
+-Minimum safety distance
+-Safety score
+-Explored states
+-Planning time
+-Replanning time
+-Approximate memory usage
 
 The results are stored in:
 
-results/experimental_results.csv
+    results/experimental_results.csv
 14. Complexity Analysis
 
 Let:
@@ -218,6 +218,7 @@ O(V + E)
 space.
 
 15. Project Structure
+```text
 safe-semantic-planner/
 ├── include/
 ├── src/
