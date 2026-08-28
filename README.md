@@ -23,7 +23,7 @@ Features
 
 Project Structure
 
-```text
+
 safe-semantic-planner/
 ├── include/
 │   ├── State.h
