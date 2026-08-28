@@ -23,7 +23,7 @@ Features
 
 Project Structure
 
-
+```text
 safe-semantic-planner/
 ├── include/
 │   ├── State.h
@@ -44,46 +44,46 @@ safe-semantic-planner/
 ├── data/
 ├── results/
 └── report/
-
+```
 Algorithm
 
-The planner uses D* Lite and considers:
-
-Transition cost
-Safety
-Reliability
-Distance from bad states
+  The planner uses D* Lite and considers:
+  
+  Transition cost
+  Safety
+  Reliability
+  Distance from bad states
 
 Test Cases
 
-Basic Reachability
-Bad State Avoidance
-Safety Margin
-Dynamic Transition
-Dynamic Goal
-Dynamic Transition Addition
+  Basic Reachability
+  Bad State Avoidance
+  Safety Margin
+  Dynamic Transition
+  Dynamic Goal
+  Dynamic Transition Addition
 
 Build
 
-g++ -std=c++17 -Iinclude src/*.cpp -o planner.
+  g++ -std=c++17 -Iinclude src/*.cpp -o planner.
 
 Run
 
-Windows:
+  Windows:
 
-.\planner.exe
+      .\planner.exe
 
 Run Tests
 
-g++ -std=c++17 -Iinclude src/State.cpp src/Transition.cpp src/PlanningProblem.cpp src/PlanningResult.cpp src/DStarLitePlanner.cpp tests/test_cases.cpp -o tests.exe
-.\tests.exe
+      g++ -std=c++17 -Iinclude src/State.cpp src/Transition.cpp src/PlanningProblem.cpp src/PlanningResult.cpp src/DStarLitePlanner.cpp tests/test_cases.cpp -o           tests.exe
+      .\tests.exe
 
 Results
-Experimental measurements are saved to:
-
-results/experimental_results.csv
+  Experimental measurements are saved to:
+  
+  results/experimental_results.csv
 
 Documentation
 
-report/Design_Report.md – Technical design and algorithm
-report/User_Manual.md – Installation, execution and usage instructions
+  report/Design_Report.md – Technical design and algorithm
+  report/User_Manual.md – Installation, execution and usage instructions
