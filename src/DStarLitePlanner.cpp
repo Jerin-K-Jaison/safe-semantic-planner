@@ -8,13 +8,14 @@
 DStarLitePlanner::DStarLitePlanner()
     : km(0.0),
       start(0),
-      goal(0) {
+      goal(0),
+      exploredStates(0) {
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // Get g value
-// --------------------------------------------------
+// ==================================================
 
 double DStarLitePlanner::getG(
     uint64_t state
@@ -29,9 +30,9 @@ double DStarLitePlanner::getG(
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // Get rhs value
-// --------------------------------------------------
+// ==================================================
 
 double DStarLitePlanner::getRHS(
     uint64_t state
@@ -46,58 +47,28 @@ double DStarLitePlanner::getRHS(
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // Euclidean heuristic
-// --------------------------------------------------
+// ==================================================
 
 double DStarLitePlanner::heuristic(
     uint64_t stateA,
     uint64_t stateB
 ) const {
 
-    const State* a = nullptr;
-    const State* b = nullptr;
-
-    for (const auto& state : problem.states) {
-
-        if (state.id == stateA)
-            a = &state;
-
-        if (state.id == stateB)
-            b = &state;
-    }
-
-    if (a == nullptr || b == nullptr)
-        return 0.0;
-
-    double sum = 0.0;
-
-    size_t dimensions =
-        std::min(
-            a->embedding.size(),
-            b->embedding.size()
-        );
-
-    for (size_t i = 0;
-         i < dimensions;
-         ++i) {
-
-        double difference =
-            a->embedding[i] -
-            b->embedding[i];
-
-        sum += difference * difference;
-    }
-
-    return std::sqrt(sum);
+    return problem.distanceBetweenStates(
+        stateA,
+        stateB
+    );
 }
 
 
-// --------------------------------------------------
-// First priority key
-// --------------------------------------------------
+// ==================================================
+// Calculate D* Lite key
+// ==================================================
 
-double DStarLitePlanner::calculateKey1(
+std::pair<double, double>
+DStarLitePlanner::calculateKey(
     uint64_t state
 ) const {
 
@@ -107,30 +78,56 @@ double DStarLitePlanner::calculateKey1(
             getRHS(state)
         );
 
-    return minimum
-           + heuristic(start, state)
-           + km;
+    return {
+        minimum +
+        heuristic(start, state) +
+        km,
+
+        minimum
+    };
 }
 
 
-// --------------------------------------------------
-// Second priority key
-// --------------------------------------------------
+// ==================================================
+// Safety penalty
+// ==================================================
 
-double DStarLitePlanner::calculateKey2(
+double DStarLitePlanner::safetyPenalty(
     uint64_t state
 ) const {
 
-    return std::min(
-        getG(state),
-        getRHS(state)
-    );
+    if (problem.isBadState(state))
+        return INF;
+
+    if (problem.badStates.empty())
+        return 0.0;
+
+    double distance =
+        problem.distanceToNearestBadState(
+            state
+        );
+
+    if (std::isinf(distance))
+        return 0.0;
+
+    /*
+       Smaller distance to a bad state produces
+       a larger penalty.
+
+       This encourages the planner to maintain
+       a larger safety margin.
+    */
+
+    const double SAFETY_WEIGHT = 1.5;
+
+    return SAFETY_WEIGHT /
+           (distance + 0.1);
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // Effective transition cost
-// --------------------------------------------------
+// ==================================================
 
 double DStarLitePlanner::transitionCost(
     const Transition& transition
@@ -154,21 +151,63 @@ double DStarLitePlanner::transitionCost(
             )
         );
 
-    double safetyPenalty =
+    double safetyAttributePenalty =
         1.0 - safety;
 
     double reliabilityPenalty =
         1.0 - reliability;
 
+    double destinationSafetyPenalty =
+        safetyPenalty(
+            transition.to
+        );
+
+    if (std::isinf(
+            destinationSafetyPenalty))
+        return INF;
+
     return transition.cost
-           + 2.0 * safetyPenalty
-           + reliabilityPenalty;
+           + 1.5 *
+             safetyAttributePenalty
+           + 1.0 *
+             reliabilityPenalty
+           + destinationSafetyPenalty;
 }
 
 
-// --------------------------------------------------
+// ==================================================
+// Build graph
+// ==================================================
+
+void DStarLitePlanner::buildGraph() {
+
+    outgoing.clear();
+    incoming.clear();
+
+    for (const auto& transition :
+         problem.transitions) {
+
+        if (!transition.available)
+            continue;
+
+        outgoing[
+            transition.from
+        ].push_back(
+            &transition
+        );
+
+        incoming[
+            transition.to
+        ].push_back(
+            &transition
+        );
+    }
+}
+
+
+// ==================================================
 // Initialize D* Lite
-// --------------------------------------------------
+// ==================================================
 
 void DStarLitePlanner::initialize() {
 
@@ -178,6 +217,8 @@ void DStarLitePlanner::initialize() {
     while (!open.empty())
         open.pop();
 
+    exploredStates = 0;
+
     km = 0.0;
 
     start =
@@ -186,7 +227,6 @@ void DStarLitePlanner::initialize() {
     goal =
         problem.goalState;
 
-    // Every state initially has infinite cost
     for (const auto& state :
          problem.states) {
 
@@ -194,20 +234,22 @@ void DStarLitePlanner::initialize() {
         rhs[state.id] = INF;
     }
 
-    // Goal has zero cost to itself
     rhs[goal] = 0.0;
 
+    auto key =
+        calculateKey(goal);
+
     open.push({
-        calculateKey1(goal),
-        calculateKey2(goal),
+        key.first,
+        key.second,
         goal
     });
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // Update vertex
-// --------------------------------------------------
+// ==================================================
 
 void DStarLitePlanner::updateVertex(
     uint64_t state
@@ -215,34 +257,37 @@ void DStarLitePlanner::updateVertex(
 
     if (state != goal) {
 
-        double best = INF;
+        double best =
+            INF;
 
-        // Look at transitions leaving this state
         auto it =
             outgoing.find(state);
 
         if (it != outgoing.end()) {
 
-            for (const auto& transition :
+            for (const Transition* transition :
                  it->second) {
 
-                if (!transition.available)
+                if (problem.isBadState(
+                        transition->from))
                     continue;
 
                 if (problem.isBadState(
-                        transition.from))
+                        transition->to))
                     continue;
 
-                if (problem.isBadState(
-                        transition.to))
+                double cost =
+                    transitionCost(
+                        *transition
+                    );
+
+                if (std::isinf(cost))
                     continue;
 
                 double candidate =
-                    transitionCost(
-                        transition
-                    )
-                    + getG(
-                        transition.to
+                    cost +
+                    getG(
+                        transition->to
                     );
 
                 best =
@@ -259,105 +304,137 @@ void DStarLitePlanner::updateVertex(
     if (getG(state) !=
         getRHS(state)) {
 
+        auto key =
+            calculateKey(state);
+
         open.push({
-            calculateKey1(state),
-            calculateKey2(state),
+            key.first,
+            key.second,
             state
         });
     }
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // Compute shortest path
-// --------------------------------------------------
+// ==================================================
 
 void DStarLitePlanner::computeShortestPath() {
 
     size_t iterations = 0;
 
-    const size_t MAX_ITERATIONS = 100000;
+    const size_t MAX_ITERATIONS =
+        1000000;
 
-    while (!open.empty() && iterations < MAX_ITERATIONS) {
+    while (!open.empty() &&
+           iterations < MAX_ITERATIONS) {
 
-        QueueNode current = open.top();
+        auto top =
+            open.top();
+
+        auto startKey =
+            calculateKey(start);
+
+        bool topLessThanStart =
+            (top.k1 < startKey.first) ||
+            (
+                top.k1 == startKey.first &&
+                top.k2 < startKey.second
+            );
+
+        if (!topLessThanStart &&
+            getRHS(start) ==
+            getG(start)) {
+
+            break;
+        }
+
         open.pop();
 
-        uint64_t u = current.state;
+        uint64_t u =
+            top.state;
 
-        double oldK1 = current.k1;
-        double oldK2 = current.k2;
+        auto currentKey =
+            calculateKey(u);
 
-        double newK1 = calculateKey1(u);
-        double newK2 = calculateKey2(u);
+        bool stale =
+            (top.k1 < currentKey.first) ||
+            (
+                top.k1 == currentKey.first &&
+                top.k2 < currentKey.second
+            );
 
-        // If the key is outdated, insert the updated key.
-        if (oldK1 < newK1 ||
-            (oldK1 == newK1 && oldK2 < newK2)) {
+        if (stale) {
 
             open.push({
-                newK1,
-                newK2,
+                currentKey.first,
+                currentKey.second,
                 u
             });
 
-            iterations++;
+            ++iterations;
             continue;
         }
 
-        if (getG(u) > getRHS(u)) {
+        ++exploredStates;
 
-            // State becomes locally consistent.
-            g[u] = getRHS(u);
+        if (getG(u) >
+            getRHS(u)) {
 
-            auto it = incoming.find(u);
+            g[u] =
+                getRHS(u);
+
+            auto it =
+                incoming.find(u);
 
             if (it != incoming.end()) {
 
-                for (const auto& transition : it->second) {
+                for (const Transition* transition :
+                     it->second) {
 
-                    updateVertex(transition.from);
+                    updateVertex(
+                        transition->from
+                    );
                 }
             }
 
         } else {
 
-            // State becomes over-consistent.
             g[u] = INF;
 
             updateVertex(u);
 
-            auto it = incoming.find(u);
+            auto it =
+                incoming.find(u);
 
             if (it != incoming.end()) {
 
-                for (const auto& transition : it->second) {
+                for (const Transition* transition :
+                     it->second) {
 
-                    updateVertex(transition.from);
+                    updateVertex(
+                        transition->from
+                    );
                 }
             }
         }
 
-        iterations++;
-
-        // Once the start state has a consistent value,
-        // the shortest path has been calculated.
-        if (!std::isinf(getG(start)) &&
-            getG(start) == getRHS(start)) {
-
-            break;
-        }
+        ++iterations;
     }
 }
-// --------------------------------------------------
+
+
+// ==================================================
 // Choose next state
-// --------------------------------------------------
+// ==================================================
 
 uint64_t DStarLitePlanner::chooseNextState(
     uint64_t current
-) {
+) const {
 
-    double bestValue = INF;
+    double bestValue =
+        INF;
 
     uint64_t bestState =
         current;
@@ -368,22 +445,28 @@ uint64_t DStarLitePlanner::chooseNextState(
     if (it == outgoing.end())
         return current;
 
-    for (const auto& transition :
+    for (const Transition* transition :
          it->second) {
 
-        if (!transition.available)
+        if (!transition->available)
             continue;
 
         if (problem.isBadState(
-                transition.to))
+                transition->to))
+            continue;
+
+        double cost =
+            transitionCost(
+                *transition
+            );
+
+        if (std::isinf(cost))
             continue;
 
         double value =
-            transitionCost(
-                transition
-            )
-            + getG(
-                transition.to
+            cost +
+            getG(
+                transition->to
             );
 
         if (value < bestValue) {
@@ -392,7 +475,7 @@ uint64_t DStarLitePlanner::chooseNextState(
                 value;
 
             bestState =
-                transition.to;
+                transition->to;
         }
     }
 
@@ -400,43 +483,78 @@ uint64_t DStarLitePlanner::chooseNextState(
 }
 
 
-// --------------------------------------------------
-// Main planning function
-// --------------------------------------------------
+// ==================================================
+// Approximate memory usage
+// ==================================================
 
-PlanningResult DStarLitePlanner::plan(
-    const PlanningProblem& inputProblem
-) {
+size_t DStarLitePlanner::approximateMemoryUsage()
+    const {
 
-    auto begin =
-        std::chrono::high_resolution_clock::now();
+    size_t memory = 0;
 
-    problem =
-        inputProblem;
+    memory +=
+        problem.states.size()
+        * sizeof(State);
 
-    outgoing.clear();
-    incoming.clear();
+    memory +=
+        problem.transitions.size()
+        * sizeof(Transition);
 
-    // Build graph
-    for (const auto& transition :
-         problem.transitions) {
+    memory +=
+        g.size()
+        * (sizeof(uint64_t) +
+           sizeof(double) +
+           32);
 
-        outgoing[
-            transition.from
-        ].push_back(
-            transition
-        );
+    memory +=
+        rhs.size()
+        * (sizeof(uint64_t) +
+           sizeof(double) +
+           32);
 
-        incoming[
-            transition.to
-        ].push_back(
-            transition
-        );
+    memory +=
+        open.size()
+        * sizeof(QueueNode);
+
+    for (const auto& pair :
+         outgoing) {
+
+        memory +=
+            pair.second.size()
+            * sizeof(const Transition*);
     }
+
+    for (const auto& pair :
+         incoming) {
+
+        memory +=
+            pair.second.size()
+            * sizeof(const Transition*);
+    }
+
+    return memory;
+}
+
+
+// ==================================================
+// Construct planning result
+// ==================================================
+
+PlanningResult DStarLitePlanner::constructResult(
+    double elapsedTimeMs
+) const {
 
     PlanningResult result;
 
-    // Start or goal cannot be bad
+    result.planningTimeMs =
+        elapsedTimeMs;
+
+    result.exploredStates =
+        exploredStates;
+
+    result.memoryUsageBytes =
+        approximateMemoryUsage();
+
     if (problem.isBadState(
             problem.initialState) ||
         problem.isBadState(
@@ -445,24 +563,8 @@ PlanningResult DStarLitePlanner::plan(
         return result;
     }
 
-    // Initialize
-    initialize();
-
-    // Run D* Lite
-    computeShortestPath();
-
-    // No path exists
     if (std::isinf(
             getG(start))) {
-
-        auto end =
-            std::chrono::high_resolution_clock::now();
-
-        result.planningTimeMs =
-            std::chrono::duration<
-                double,
-                std::milli
-            >(end - begin).count();
 
         return result;
     }
@@ -470,64 +572,104 @@ PlanningResult DStarLitePlanner::plan(
     uint64_t current =
         start;
 
+    std::unordered_set<uint64_t>
+        visited;
+
+    visited.insert(current);
+
     result.statePath.push_back(
         current
     );
 
-    std::unordered_set<
-        uint64_t
-    > visited;
+    double minimumDistance =
+        INF;
 
-    visited.insert(current);
-
-    double minimumSafety =
+    double minimumSafetyAttribute =
         1.0;
 
-    // Construct path
-    while (current != goal) {
+    size_t safetyGuard =
+        0;
+
+    while (current != goal &&
+           safetyGuard < problem.states.size() + 1) {
+
+        ++safetyGuard;
 
         uint64_t next =
-            chooseNextState(
-                current
-            );
+            chooseNextState(current);
 
-        // No valid transition
         if (next == current)
             break;
 
-        // Never enter a bad state
         if (problem.isBadState(next))
             break;
 
-        // Prevent loops
         if (visited.count(next))
+            break;
+
+        const Transition* selected =
+            nullptr;
+
+        auto it =
+            outgoing.find(current);
+
+        if (it != outgoing.end()) {
+
+            double bestValue =
+                INF;
+
+            for (const Transition* transition :
+                 it->second) {
+
+                if (transition->to != next)
+                    continue;
+
+                double value =
+                    transitionCost(
+                        *transition
+                    ) +
+                    getG(
+                        transition->to
+                    );
+
+                if (value < bestValue) {
+
+                    bestValue = value;
+
+                    selected =
+                        transition;
+                }
+            }
+        }
+
+        if (selected == nullptr)
             break;
 
         visited.insert(next);
 
-        // Find selected transition
-        for (const auto& transition :
-             outgoing[current]) {
+        result.transitionPath.push_back(
+            selected->id
+        );
 
-            if (transition.to == next &&
-                transition.available) {
+        result.totalCost +=
+            selected->cost;
 
-                result.transitionPath.push_back(
-                    transition.id
-                );
+        minimumSafetyAttribute =
+            std::min(
+                minimumSafetyAttribute,
+                selected->safety
+            );
 
-                result.totalCost +=
-                    transition.cost;
+        double distance =
+            problem.distanceToNearestBadState(
+                next
+            );
 
-                minimumSafety =
-                    std::min(
-                        minimumSafety,
-                        transition.safety
-                    );
-
-                break;
-            }
-        }
+        minimumDistance =
+            std::min(
+                minimumDistance,
+                distance
+            );
 
         current =
             next;
@@ -540,28 +682,98 @@ PlanningResult DStarLitePlanner::plan(
     result.success =
         (current == goal);
 
+    if (std::isinf(minimumDistance)) {
+
+        if (problem.badStates.empty())
+            minimumDistance = 0.0;
+        else
+            minimumDistance = 0.0;
+    }
+
+    result.minimumSafetyDistance =
+        minimumDistance;
+
     result.safetyScore =
-        minimumSafety;
-
-    result.exploredStates =
-        visited.size();
-
-    auto end =
-        std::chrono::high_resolution_clock::now();
-
-    result.planningTimeMs =
-        std::chrono::duration<
-            double,
-            std::milli
-        >(end - begin).count();
+        minimumSafetyAttribute;
 
     return result;
 }
 
 
-// --------------------------------------------------
-// Dynamic goal update
-// --------------------------------------------------
+// ==================================================
+// Main planning function
+// ==================================================
+
+PlanningResult DStarLitePlanner::plan(
+    const PlanningProblem& inputProblem
+) {
+
+    auto begin =
+        std::chrono::high_resolution_clock::now();
+
+    problem =
+        inputProblem;
+
+    buildGraph();
+
+    initialize();
+
+    computeShortestPath();
+
+    auto end =
+        std::chrono::high_resolution_clock::now();
+
+    double elapsed =
+        std::chrono::duration<
+            double,
+            std::milli
+        >(end - begin).count();
+
+    return constructResult(
+        elapsed
+    );
+}
+
+
+// ==================================================
+// Replanning
+// ==================================================
+
+PlanningResult DStarLitePlanner::replan() {
+
+    auto begin =
+        std::chrono::high_resolution_clock::now();
+
+    buildGraph();
+
+    initialize();
+
+    computeShortestPath();
+
+    auto end =
+        std::chrono::high_resolution_clock::now();
+
+    double elapsed =
+        std::chrono::duration<
+            double,
+            std::milli
+        >(end - begin).count();
+
+    PlanningResult result =
+        constructResult(
+            elapsed
+        );
+
+    result.replanningTimeMs =
+        elapsed;
+
+    return result;
+}
+
+
+// ==================================================
+// Goal update
+// ==================================================
 
 void DStarLitePlanner::updateGoal(
     uint64_t newGoal
@@ -569,16 +781,12 @@ void DStarLitePlanner::updateGoal(
 
     problem.goalState =
         newGoal;
-
-    initialize();
-
-    computeShortestPath();
 }
 
 
-// --------------------------------------------------
-// Dynamic transition update
-// --------------------------------------------------
+// ==================================================
+// Transition availability update
+// ==================================================
 
 void DStarLitePlanner::updateTransition(
     uint64_t transitionId,
@@ -594,38 +802,15 @@ void DStarLitePlanner::updateTransition(
             transition.available =
                 available;
 
-            break;
+            return;
         }
     }
-
-    outgoing.clear();
-    incoming.clear();
-
-    for (const auto& transition :
-         problem.transitions) {
-
-        outgoing[
-            transition.from
-        ].push_back(
-            transition
-        );
-
-        incoming[
-            transition.to
-        ].push_back(
-            transition
-        );
-    }
-
-    initialize();
-
-    computeShortestPath();
 }
 
 
-// --------------------------------------------------
-// Dynamic bad-state update
-// --------------------------------------------------
+// ==================================================
+// Bad state update
+// ==================================================
 
 void DStarLitePlanner::updateBadStates(
     const std::vector<uint64_t>& badStates
@@ -633,8 +818,42 @@ void DStarLitePlanner::updateBadStates(
 
     problem.badStates =
         badStates;
+}
 
-    initialize();
 
-    computeShortestPath();
+// ==================================================
+// Add transition
+// ==================================================
+
+void DStarLitePlanner::addTransition(
+    const Transition& transition
+) {
+
+    problem.transitions.push_back(
+        transition
+    );
+}
+
+
+// ==================================================
+// Remove transition
+// ==================================================
+
+void DStarLitePlanner::removeTransition(
+    uint64_t transitionId
+) {
+
+    problem.transitions.erase(
+        std::remove_if(
+            problem.transitions.begin(),
+            problem.transitions.end(),
+            [transitionId](
+                const Transition& transition
+            ) {
+                return transition.id ==
+                       transitionId;
+            }
+        ),
+        problem.transitions.end()
+    );
 }

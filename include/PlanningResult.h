@@ -7,20 +7,21 @@
 
 class PlanningResult {
 public:
-
     bool success;
 
     std::vector<uint64_t> statePath;
-
     std::vector<uint64_t> transitionPath;
 
     double totalCost;
-
     double safetyScore;
+    double minimumSafetyDistance;
 
     size_t exploredStates;
 
     double planningTimeMs;
+    double replanningTimeMs;
+
+    size_t memoryUsageBytes;
 
     PlanningResult();
 };
