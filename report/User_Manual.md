@@ -1,7 +1,3 @@
-
-### User_Manual
-
-
 # User Manual
 
 1. Requirements
@@ -19,32 +15,34 @@ tests/     Test program
 data/      Test data
 results/   Experimental results
 report/    Documentation
-
+```
 3. Compile the Planner
 
 Open a terminal in the project root:
 
-g++ -std=c++17 -Iinclude src/*.cpp -o planner.exe
+    g++ -std=c++17 -Iinclude src/*.cpp -o planner.exe
 4. Run the Planner
 
 Windows:
 
-.\planner.exe
+    .\planner.exe
 
 Linux/macOS:
 
-./planner.exe
+    ./planner.exe
 5. Compile the Tests
+   
 g++ -std=c++17 -Iinclude src/State.cpp src/Transition.cpp src/PlanningProblem.cpp src/PlanningResult.cpp src/DStarLitePlanner.cpp tests/test_cases.cpp -o tests.exe
-6. Run the Tests
+
+7. Run the Tests
 
 Windows:
 
-.\tests.exe
+    .\tests.exe
 
 Linux/macOS:
 
-./tests.exe
+    ./tests.exe
 7. Test Cases
 
 The program includes:
@@ -55,11 +53,12 @@ Safety Margin
 Dynamic Transition
 Dynamic Goal
 Dynamic Transition Addition
+
 8. Experimental Results
 
 Experimental results are automatically saved in:
 
-results/experimental_results.csv
+    results/experimental_results.csv
 9. Modifying States
 
 States can be created using:
@@ -73,25 +72,25 @@ State(10, {4.0, 2.0});
 
 Transitions can be created using:
 
-Transition(
-    id,
-    from,
-    to,
-    cost,
-    safety,
-    reliability
-);
+    Transition(
+        id,
+        from,
+        to,
+        cost,
+        safety,
+        reliability
+    );
 
 Example:
 
-Transition(
-    10,
-    2,
-    5,
-    2.0,
-    0.95,
-    0.98
-);
+    Transition(
+        10,
+        2,
+        5,
+        2.0,
+        0.95,
+        0.98
+    );
 11. Defining Bad States
 
 Bad states are specified using:
@@ -104,7 +103,9 @@ problem.badStates = {
 The planner will not use a bad state in a valid path.
 
 12. Dynamic Updates
+    
 Change Goal
+```text
 planner.updateGoal(newGoal);
 planner.replan();
 Disable Transition
@@ -137,6 +138,7 @@ planner.removeTransition(
 );
 
 planner.replan();
+```
 13. Output
 
 The planner displays:
